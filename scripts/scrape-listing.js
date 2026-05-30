@@ -1,5 +1,5 @@
 'use strict';
-require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+if (require.main === module) require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const axios = require('axios');
 const cheerio = require('cheerio');
 const FirecrawlApp = require('@mendable/firecrawl-js').default;

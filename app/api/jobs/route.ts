@@ -4,8 +4,8 @@ import { tasks } from '@trigger.dev/sdk/v3';
 import type { generateAdsTask } from '../../../trigger/generateAds';
 
 const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function POST(req: NextRequest) {

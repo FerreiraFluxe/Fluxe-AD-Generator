@@ -17,7 +17,8 @@ async function takeScreenshot(htmlPath, outPngPath, { width = 1080, height = 108
       headless: chromium.headless,
     });
   } else {
-    const puppeteer = require('puppeteer');
+    // Use indirect require so esbuild doesn't try to bundle 'puppeteer' in the cloud build
+    const puppeteer = require(/* local-dev */ ['puppeteer'].join(''));
     browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
