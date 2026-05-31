@@ -63,6 +63,7 @@ async function classifyPhotos(photoPaths: string[]): Promise<{
 export const generateAdsTask = task({
   id: 'generate-ads',
   maxDuration: 300,
+  machine: { preset: 'large-1x' },
   run: async (payload: { jobId: string }) => {
     const { jobId } = payload;
 
@@ -137,11 +138,12 @@ export const generateAdsTask = task({
         { photos: { exterior: classified.ext2 || classified.int2, int1: classified.int1, int2: classified.exterior }, outputName: 'ad-05' },
       ];
 
-      // Generate all 5 ads in parallel (was sequential — 5x slower)
-      const results = await Promise.all(
-        jobs.map(adJob => generateAd({ ...adJob, data, amiNumber: null, outDir }))
-      );
-      const generatedPaths = results.flatMap((r: { square: string; story: string }) => [r.square, r.story]);
+      // Generate ads sequentially — parallel crashes (5 Chrome × 300MB = OOM)
+      const generatedPaths: string[] = [];
+      for (const adJob of jobs) {
+        const r = await generateAd({ ...adJob, data, amiNumber: null, outDir });
+        generatedPaths.push(r.square, r.story);
+      }
 
       // Upload all outputs in parallel
       const outputUrls = (await Promise.all(
