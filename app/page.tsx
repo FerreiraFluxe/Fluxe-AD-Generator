@@ -48,12 +48,14 @@ export default function Home() {
       if (!prepRes.ok) throw new Error(prep.error || 'Erro ao preparar job');
 
       // Step 2: upload all photos in parallel directly to Supabase (no size limit)
+      // No custom headers — browser sets Content-Type automatically for File bodies
+      // upsert is already encoded in the signed URL via createSignedUploadUrl({ upsert: true })
       await Promise.all(prep.uploads.map(async (u: { signedUrl: string }, i: number) => {
-        await fetch(u.signedUrl, {
+        const res = await fetch(u.signedUrl.replace(/^﻿/, ''), {
           method: 'PUT',
           body: files[i],
-          headers: { 'Content-Type': files[i].type || 'image/jpeg', 'x-upsert': 'true' },
         });
+        if (!res.ok) throw new Error(`Upload falhou (${res.status}): ${files[i].name}`);
         setUploadProgress(p => p + 1);
       }));
 
