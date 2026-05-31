@@ -29,8 +29,10 @@ export default function Home() {
 
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // Strip BOM and trim from any string (clipboard paste often adds U+FEFF)
-  function clean(s: string) { return s.replace(/^﻿/, '').trim(); }
+  // Strip U+FEFF (BOM) — Windows clipboard and some file APIs prepend it
+  function clean(s: string) {
+    return Array.from(s).filter(c => c.charCodeAt(0) !== 0xFEFF).join('').trim();
+  }
 
   async function submit() {
     if (!files.length) { setError('Adiciona pelo menos uma foto.'); return; }
@@ -52,8 +54,15 @@ export default function Home() {
 
       // Step 2: upload photos directly to Supabase (bypasses Next.js size limit)
       await Promise.all(prep.uploads.map(async (u: { signedUrl: string }, i: number) => {
-        const url = clean(u.signedUrl); // strip BOM if Supabase returns one
-        const res = await fetch(url, { method: 'PUT', body: files[i] });
+        const url = clean(u.signedUrl);
+        // Set Content-Type explicitly with cleaned MIME — browser uses files[i].type
+        // internally which can have a BOM on Windows, causing ByteString error
+        const mimeType = clean(files[i].type) || 'image/jpeg';
+        const res = await fetch(url, {
+          method: 'PUT',
+          body: files[i],
+          headers: { 'Content-Type': mimeType },
+        });
         if (!res.ok) throw new Error(`Upload falhou (${res.status}): ${files[i].name}`);
         setUploadProgress(p => p + 1);
       }));
