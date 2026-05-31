@@ -29,6 +29,9 @@ export default function Home() {
 
   const [uploadProgress, setUploadProgress] = useState(0);
 
+  // Strip BOM and trim from any string (clipboard paste often adds U+FEFF)
+  function clean(s: string) { return s.replace(/^﻿/, '').trim(); }
+
   async function submit() {
     if (!files.length) { setError('Adiciona pelo menos uma foto.'); return; }
     if (!listingUrl && !manual.typology) { setError('Adiciona o link do anúncio ou preenche os dados manualmente.'); return; }
@@ -40,21 +43,17 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fileNames: files.map(f => f.name),
-          listingUrl: listingUrl || undefined,
+          listingUrl: listingUrl ? clean(listingUrl) : undefined,
           ...(showManual ? manual : {}),
         }),
       });
       const prep = await prepRes.json();
       if (!prepRes.ok) throw new Error(prep.error || 'Erro ao preparar job');
 
-      // Step 2: upload all photos in parallel directly to Supabase (no size limit)
-      // No custom headers — browser sets Content-Type automatically for File bodies
-      // upsert is already encoded in the signed URL via createSignedUploadUrl({ upsert: true })
+      // Step 2: upload photos directly to Supabase (bypasses Next.js size limit)
       await Promise.all(prep.uploads.map(async (u: { signedUrl: string }, i: number) => {
-        const res = await fetch(u.signedUrl.replace(/^﻿/, ''), {
-          method: 'PUT',
-          body: files[i],
-        });
+        const url = clean(u.signedUrl); // strip BOM if Supabase returns one
+        const res = await fetch(url, { method: 'PUT', body: files[i] });
         if (!res.ok) throw new Error(`Upload falhou (${res.status}): ${files[i].name}`);
         setUploadProgress(p => p + 1);
       }));
