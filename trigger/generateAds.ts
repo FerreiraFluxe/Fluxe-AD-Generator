@@ -137,26 +137,27 @@ export const generateAdsTask = task({
         { photos: { exterior: classified.ext2 || classified.int2, int1: classified.int1, int2: classified.exterior }, outputName: 'ad-05' },
       ];
 
-      const generatedPaths: string[] = [];
-      for (const adJob of jobs) {
-        const result = await generateAd({ ...adJob, data, amiNumber: null, outDir });
-        generatedPaths.push(result.square, result.story);
-      }
+      // Generate all 5 ads in parallel (was sequential — 5x slower)
+      const results = await Promise.all(
+        jobs.map(adJob => generateAd({ ...adJob, data, amiNumber: null, outDir }))
+      );
+      const generatedPaths = results.flatMap((r: { square: string; story: string }) => [r.square, r.story]);
 
-      // Upload outputs to Supabase Storage
-      const outputUrls: string[] = [];
-      for (const filePath of generatedPaths) {
-        const fileName = path.basename(filePath);
-        const storagePath = `${jobId}/${fileName}`;
-        const fileBuffer = fs.readFileSync(filePath);
-        await supabaseAdmin.storage.from('outputs').upload(storagePath, fileBuffer, {
-          contentType: 'image/png',
-          upsert: true,
-        });
-        const { data: signed } = await supabaseAdmin.storage
-          .from('outputs').createSignedUrl(storagePath, 7 * 24 * 60 * 60);
-        if (signed?.signedUrl) outputUrls.push(signed.signedUrl);
-      }
+      // Upload all outputs in parallel
+      const outputUrls = (await Promise.all(
+        generatedPaths.map(async (filePath: string) => {
+          const fileName = path.basename(filePath);
+          const storagePath = `${jobId}/${fileName}`;
+          const fileBuffer = fs.readFileSync(filePath);
+          await supabaseAdmin.storage.from('outputs').upload(storagePath, fileBuffer, {
+            contentType: 'image/png',
+            upsert: true,
+          });
+          const { data: signed } = await supabaseAdmin.storage
+            .from('outputs').createSignedUrl(storagePath, 7 * 24 * 60 * 60);
+          return signed?.signedUrl ?? null;
+        })
+      )).filter(Boolean) as string[];
 
       await supabaseAdmin.from('jobs').update({ status: 'done', output_urls: outputUrls }).eq('id', jobId);
 

@@ -27,21 +27,46 @@ export default function Home() {
     addFiles(e.dataTransfer.files);
   }
 
+  const [uploadProgress, setUploadProgress] = useState(0);
+
   async function submit() {
     if (!files.length) { setError('Adiciona pelo menos uma foto.'); return; }
     if (!listingUrl && !manual.typology) { setError('Adiciona o link do anúncio ou preenche os dados manualmente.'); return; }
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setUploadProgress(0);
     try {
-      const form = new FormData();
-      files.forEach(f => form.append('photos', f));
-      if (listingUrl) form.append('listing_url', listingUrl);
-      if (showManual) {
-        Object.entries(manual).forEach(([k, v]) => v && form.append(k, v));
-      }
-      const res = await fetch('/api/jobs', { method: 'POST', body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro desconhecido');
-      router.push(`/job/${data.jobId}`);
+      // Step 1: create job + get signed upload URLs
+      const prepRes = await fetch('/api/prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileNames: files.map(f => f.name),
+          listingUrl: listingUrl || undefined,
+          ...(showManual ? manual : {}),
+        }),
+      });
+      const prep = await prepRes.json();
+      if (!prepRes.ok) throw new Error(prep.error || 'Erro ao preparar job');
+
+      // Step 2: upload all photos in parallel directly to Supabase (no size limit)
+      await Promise.all(prep.uploads.map(async (u: { signedUrl: string }, i: number) => {
+        await fetch(u.signedUrl, {
+          method: 'PUT',
+          body: files[i],
+          headers: { 'Content-Type': files[i].type || 'image/jpeg', 'x-upsert': 'true' },
+        });
+        setUploadProgress(p => p + 1);
+      }));
+
+      // Step 3: trigger generation
+      const jobRes = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: prep.jobId, inputPaths: prep.uploads.map((u: { path: string }) => u.path) }),
+      });
+      const job = await jobRes.json();
+      if (!jobRes.ok) throw new Error(job.error || 'Erro ao iniciar geração');
+
+      router.push(`/job/${job.jobId}`);
     } catch (err: any) {
       setError(err.message);
       setLoading(false);
@@ -133,8 +158,21 @@ export default function Home() {
 
         <button onClick={submit} disabled={loading}
           className="mt-6 w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl text-base transition-colors">
-          {loading ? 'A enviar...' : 'Gerar 5 Anúncios →'}
+          {loading
+            ? uploadProgress < files.length && files.length > 0
+              ? `A enviar fotos... ${uploadProgress}/${files.length}`
+              : 'A iniciar geração...'
+            : 'Gerar 5 Anúncios →'}
         </button>
+
+        {loading && files.length > 0 && uploadProgress < files.length && (
+          <div className="mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-red-500 transition-all duration-300 rounded-full"
+              style={{ width: `${(uploadProgress / files.length) * 100}%` }}
+            />
+          </div>
+        )}
 
         <p className="mt-4 text-center text-xs text-gray-400">
           Leva cerca de 60 segundos · 5 square + 5 story = 10 ficheiros PNG
