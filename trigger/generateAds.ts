@@ -22,41 +22,68 @@ function downloadFile(url: string, dest: string): Promise<void> {
   });
 }
 
+interface PhotoScore {
+  path: string;
+  brightness: number;
+  saturation: number;
+  ratio: number;
+  exteriorScore: number;
+}
+
 async function classifyPhotos(photoPaths: string[]): Promise<{
   exterior: string;
   ext2?: string;
   int1: string;
   int2: string;
-  rest: string[];
+  int3?: string;
+  int4?: string;
 }> {
   const sharp = require('sharp');
-  const scored: Array<{ path: string; score: number }> = [];
+  const scores: PhotoScore[] = [];
 
   for (const p of photoPaths) {
     try {
       const meta = await sharp(p).metadata();
       const ratio = (meta.width || 1) / (meta.height || 1);
-      // Wide landscape photos more likely exterior; portrait/square more likely interior
+
+      // Sample colours from a 50×50 thumbnail
       const { data } = await sharp(p).resize(50, 50).raw().toBuffer({ resolveWithObject: true });
-      let brightness = 0;
-      for (let i = 0; i < data.length; i += 3) brightness += (data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114);
-      brightness /= (data.length / 3);
-      // Higher score = more exterior-like (bright + wide)
-      scored.push({ path: p, score: ratio * 0.6 + (brightness / 255) * 0.4 });
+      let brightness = 0, blueGreenBias = 0;
+      const px = data.length / 3;
+      for (let i = 0; i < data.length; i += 3) {
+        const r = data[i], g = data[i+1], b = data[i+2];
+        brightness += r * 0.299 + g * 0.587 + b * 0.114;
+        if (b > r * 1.1 || g > r * 1.05) blueGreenBias++;
+      }
+      brightness /= px;
+      blueGreenBias /= px;
+
+      // Wide + bright + blue-green tones = exterior/pool/sky
+      const exteriorScore = ratio * 0.4 + (brightness / 255) * 0.3 + blueGreenBias * 0.3;
+      scores.push({ path: p, brightness, saturation: 0, ratio, exteriorScore });
     } catch {
-      scored.push({ path: p, score: 0 });
+      scores.push({ path: p, brightness: 128, saturation: 0, ratio: 1.33, exteriorScore: 0 });
     }
   }
 
-  scored.sort((a, b) => b.score - a.score);
-  const [ext, int1, int2, ext2candidate, ...rest] = scored.map(s => s.path);
+  // Sort by exterior likelihood: top 2 = exteriors, rest = interiors sorted by brightness (brighter = better interior)
+  const byExterior = [...scores].sort((a, b) => b.exteriorScore - a.exteriorScore);
+  const byBrightness = [...scores].sort((a, b) => b.brightness - a.brightness);
+
+  const ext = byExterior[0]?.path || photoPaths[0];
+  const ext2 = byExterior[1]?.path;
+
+  // Best interiors = brightest photos that aren't already used as exteriors
+  const usedAsExt = new Set([ext, ext2]);
+  const interiors = byBrightness.filter(s => !usedAsExt.has(s.path)).map(s => s.path);
 
   return {
-    exterior: ext || photoPaths[0],
-    ext2: ext2candidate,
-    int1: int1 || photoPaths[1] || photoPaths[0],
-    int2: int2 || photoPaths[2] || photoPaths[0],
-    rest: rest || [],
+    exterior: ext,
+    ext2: ext2,
+    int1: interiors[0] || photoPaths[0],
+    int2: interiors[1] || photoPaths[1] || photoPaths[0],
+    int3: interiors[2],
+    int4: interiors[3],
   };
 }
 
@@ -125,17 +152,23 @@ export const generateAdsTask = task({
 
       const { generateAd } = require('../scripts/generate-ad');
 
+      const { exterior: ext, ext2, int1, int2, int3, int4 } = classified;
+      // Fallbacks so every slot always has a photo
+      const i3 = int3 || int1;
+      const i4 = int4 || int2;
+      const e2 = ext2 || int1;
+
       const jobs = [
-        // 1 single-top: exterior hero
-        { photos: { exterior: classified.exterior, int1: classified.int1, int2: classified.int2 }, outputName: 'ad-01' },
-        // 2 dual-top: exterior + ext2
-        { photos: { exterior: classified.exterior, ext2: classified.ext2 || classified.int1, int1: classified.int1, int2: classified.int2 }, outputName: 'ad-02' },
-        // 3 single-top: int1 as hero
-        { photos: { exterior: classified.int1, int1: classified.int2, int2: classified.ext2 || classified.exterior }, outputName: 'ad-03' },
-        // 4 dual-top: int1 + int2
-        { photos: { exterior: classified.int1, ext2: classified.int2, int1: classified.exterior, int2: classified.ext2 || classified.int1 }, outputName: 'ad-04' },
-        // 5 single-top: ext2 or int2 hero
-        { photos: { exterior: classified.ext2 || classified.int2, int1: classified.int1, int2: classified.exterior }, outputName: 'ad-05' },
+        // 1 — SINGLE TOP: melhor exterior | int1 | int2
+        { photos: { exterior: ext,  int1: int1, int2: int2 }, outputName: 'ad-01' },
+        // 2 — DUAL TOP:   exterior + ext2 | int1 | int2
+        { photos: { exterior: ext,  ext2: e2,   int1: int1, int2: int2 }, outputName: 'ad-02' },
+        // 3 — SINGLE TOP: int1 como hero  | int2 | int3
+        { photos: { exterior: int1, int1: int2,  int2: i3  }, outputName: 'ad-03' },
+        // 4 — DUAL TOP:   int1 + int2     | ext  | int3
+        { photos: { exterior: int1, ext2: int2,  int1: ext, int2: i3   }, outputName: 'ad-04' },
+        // 5 — DUAL TOP:   exterior + int1 | int3 | int4
+        { photos: { exterior: ext,  ext2: int1,  int1: i3,  int2: i4   }, outputName: 'ad-05' },
       ];
 
       // Generate ads sequentially — parallel crashes (5 Chrome × 300MB = OOM)
