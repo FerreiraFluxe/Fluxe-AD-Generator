@@ -34,12 +34,23 @@ export default function Home() {
     return Array.from(s).filter(c => c.charCodeAt(0) !== 0xFEFF).join('').trim();
   }
 
+  function xhrPut(url: string, file: File): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', url);
+      xhr.onload = () => xhr.status < 400 ? resolve() : reject(new Error(`Upload ${xhr.status}: ${file.name}`));
+      xhr.onerror = () => reject(new Error(`Upload network error: ${file.name}`));
+      xhr.send(file);
+    });
+  }
+
   async function submit() {
     if (!files.length) { setError('Adiciona pelo menos uma foto.'); return; }
     if (!listingUrl && !manual.typology) { setError('Adiciona o link do anúncio ou preenche os dados manualmente.'); return; }
     setLoading(true); setError(''); setUploadProgress(0);
     try {
       // Step 1: create job + get signed upload URLs
+      setError('A preparar...');
       const prepRes = await fetch('/api/prepare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -50,32 +61,26 @@ export default function Home() {
         }),
       });
       const prep = await prepRes.json();
-      if (!prepRes.ok) throw new Error(prep.error || 'Erro ao preparar job');
+      if (!prepRes.ok) throw new Error('Prepare: ' + (prep.error || prepRes.status));
 
-      // Step 2: upload photos directly to Supabase (bypasses Next.js size limit)
+      // Step 2: upload via XHR (avoids Fetch ByteString restriction on file MIME types)
+      setError('A enviar fotos...');
       await Promise.all(prep.uploads.map(async (u: { signedUrl: string }, i: number) => {
-        const url = clean(u.signedUrl);
-        // Set Content-Type explicitly with cleaned MIME — browser uses files[i].type
-        // internally which can have a BOM on Windows, causing ByteString error
-        const mimeType = clean(files[i].type) || 'image/jpeg';
-        const res = await fetch(url, {
-          method: 'PUT',
-          body: files[i],
-          headers: { 'Content-Type': mimeType },
-        });
-        if (!res.ok) throw new Error(`Upload falhou (${res.status}): ${files[i].name}`);
+        await xhrPut(clean(u.signedUrl), files[i]);
         setUploadProgress(p => p + 1);
       }));
 
       // Step 3: trigger generation
+      setError('A iniciar geração...');
       const jobRes = await fetch('/api/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobId: prep.jobId, inputPaths: prep.uploads.map((u: { path: string }) => u.path) }),
       });
       const job = await jobRes.json();
-      if (!jobRes.ok) throw new Error(job.error || 'Erro ao iniciar geração');
+      if (!jobRes.ok) throw new Error('Jobs: ' + (job.error || jobRes.status));
 
+      setError('');
       router.push(`/job/${job.jobId}`);
     } catch (err: any) {
       setError(err.message);
