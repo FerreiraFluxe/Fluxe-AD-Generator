@@ -4,9 +4,9 @@ const path = require('path');
 const sharp = require('sharp');
 const { takeScreenshot } = require('./screenshot');
 
-const ROOT = path.resolve(__dirname, '..');
-const TEMP_DIR = path.join(ROOT, 'outputs', 'temp');
-const OUT_DIR = path.join(ROOT, 'outputs');
+const os = require('os');
+const TEMP_DIR = path.join(os.tmpdir(), 'fluxe-ad-temp');
+const OUT_DIR = path.join(os.tmpdir(), 'fluxe-ad-out');
 
 // Smart crop + colour enhancement before embedding
 // isExterior: stronger saturation/brightness for sky/greenery
