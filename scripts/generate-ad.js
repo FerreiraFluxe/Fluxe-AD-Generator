@@ -56,12 +56,15 @@ function buildHtml({ exteriorB64, ext2B64, int1B64, int2B64, data, amiNumber }) 
 <html>
 <head>
 <meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=block" rel="stylesheet">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
   width: 1080px; height: 1080px; overflow: hidden;
   background: #fff;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', 'Liberation Sans', Arial, Helvetica, sans-serif;
 }
 .layout { position: relative; width: 1080px; height: 1080px; }
 

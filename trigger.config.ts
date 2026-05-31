@@ -1,5 +1,5 @@
 import { defineConfig } from "@trigger.dev/sdk/v3";
-import { additionalFiles, additionalPackages } from "@trigger.dev/build/extensions/core";
+import { additionalFiles, additionalPackages, aptGet } from "@trigger.dev/build/extensions/core";
 import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
 
 export default defineConfig({
@@ -21,6 +21,7 @@ export default defineConfig({
   build: {
     extensions: [
       puppeteer(),
+      aptGet({ packages: ["fonts-liberation", "fonts-freefont-ttf", "fontconfig"] }),
       additionalFiles({ files: ["./scripts/**"] }),
       additionalPackages({ packages: ["sharp", "axios", "cheerio", "@mendable/firecrawl-js", "fs-extra", "dotenv"] }),
     ],
