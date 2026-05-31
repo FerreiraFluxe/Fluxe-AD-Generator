@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+const bom = (s: string) => s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
 const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  bom(process.env.SUPABASE_URL || ''),
+  bom(process.env.SUPABASE_SERVICE_ROLE_KEY || '')
 );
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

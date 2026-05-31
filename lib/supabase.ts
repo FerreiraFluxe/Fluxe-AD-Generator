@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-const url = process.env.SUPABASE_URL!;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Strip U+FEFF BOM — PowerShell pipes add it to env var values on Windows
+const stripBom = (s: string) => s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
+
+const url = stripBom(process.env.SUPABASE_URL || '');
+const serviceKey = stripBom(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
 
 export const supabaseAdmin = createClient(url, serviceKey);
 

@@ -3,9 +3,10 @@ import { createClient } from '@supabase/supabase-js';
 import { tasks } from '@trigger.dev/sdk/v3';
 import type { generateAdsTask } from '../../../trigger/generateAds';
 
+const bom = (s: string) => s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
 const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  bom(process.env.SUPABASE_URL || ''),
+  bom(process.env.SUPABASE_SERVICE_ROLE_KEY || '')
 );
 
 // Step 2: called after browser has uploaded all photos directly to Supabase
