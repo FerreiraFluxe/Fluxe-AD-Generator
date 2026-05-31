@@ -94,7 +94,7 @@ export default function Home() {
             <>
               <div className="text-4xl mb-3">🖼️</div>
               <p className="font-semibold text-gray-700">Arrasta as fotos aqui</p>
-              <p className="text-xs text-gray-400 mt-1">ou clica para seleccionar · JPG/PNG · máx. 20 fotos</p>
+              <p className="text-xs text-gray-400 mt-1">ou clica para seleccionar · JPG/PNG</p>
             </>
           ) : (
             <>
