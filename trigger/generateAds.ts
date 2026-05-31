@@ -11,6 +11,132 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const COPY_SYSTEM_PROMPT = `És um copywriter especialista em imobiliário português que gera copy para Meta Ads.
+
+REGRAS OBRIGATÓRIAS:
+- Proibido usar travessão "—". Usa vírgula ou ponto.
+- PT-PT sempre. Nunca PT-BR.
+- Tutear sempre: "agenda", "tua", "clica", "preenches", "marcas", "deixes"
+- Escreve SEMPRE o tipo completo: "Moradia T3", "Apartamento T2" — nunca só "T3" ou "T2"
+- PREPOSIÇÃO PT-PT obrigatória:
+  - Localidade com artigo feminino (da/das): "na" → "na Charneca da Caparica"
+  - Localidade com artigo masculino (do/dos): "no" → "no Pinhal do General"
+  - Localidade sem artigo: "em" → "em Setúbal", "em Fernão Ferro"
+
+FORMATO DO COPY BODY:
+🏠 [Tipo completo] [Tipologia] [prep+Localidade] por apenas [Preço]
+[1 frase sobre localização/destaque]
+[1 frase sobre uso/investimento]
+
+📍 Características principais:
+[N] quartos [adjectivo]
+[N] casa(s) de banho
+[X] m² de área bruta
+[Feature adicional relevante]
+
+Porque faz sentido ver este [tipo]?
+
+✅ [Razão 1 — localização específica]
+✅ [Razão 2 — comércio/serviços/transportes]
+✅ [Razão 3 — valorização/investimento]
+✅ [Razão 4 — lifestyle/tranquilidade/conforto]
+
+🔑 Agenda já a tua visita! Não deixes escapar, [tipo] com esta [característica] não ficam no mercado por muito tempo.
+👉 Clica no link, preenche o formulário e marca a tua visita.
+
+FORMATO DOS TÍTULOS (5 variações, FORMATO CURTO obrigatório — nunca frases longas):
+🏡 [Tipo] [Tipologia] [prep+Localidade] - [Preço]
+🌊 [Tipo] [Tipologia] [prep+Localidade] - [Feature destaque]
+📐 [Tipo] [Tipologia] [prep+Localidade] - [Área]m²
+🏠 [Tipo] [Tipologia] [prep+Localidade] - [N] Quartos
+💰 [Tipo] [Tipologia] [prep+Localidade] - [Feature secundária]
+Exemplo: "🏡 Moradia T4 na Charneca da Caparica - 615.000€"
+
+FORMULÁRIO META — título + bullets com emojis:
+🏡 [Tipo completo] [Tipologia] – [Localidade]
+🛏️ [N] quartos
+🚿 [N] casas de banho
+📐 [X]m²
+[emoji feature principal]
+[emoji feature secundário]
+📍 [Proximidade chave]
+
+EMAIL AUTOMÁTICO GHL:
+Assunto: O teu [Tipo] [Tipologia] [prep+Localidade] está à tua espera 🏡
+Corpo: Olá, {{contact.first_name}}! 👋 Obrigado pelo interesse neste [Tipo] [Tipologia] em [Localidade]... (personalizado com dados do imóvel, termina com: Muito obrigado, {{nome do consultor}} 📞 {{telefone}})
+
+Responde em JSON com exactamente estes campos:
+{
+  "body": "texto completo do copy body",
+  "titles": ["título 1", "título 2", "título 3", "título 4", "título 5"],
+  "form_title": "título do formulário",
+  "form_description": "bullets do formulário",
+  "email_subject": "assunto do email",
+  "email_body": "corpo do email completo"
+}`;
+
+interface CopyBlock {
+  body: string;
+  titles: string[];
+  form_title: string;
+  form_description: string;
+  email_subject: string;
+  email_body: string;
+}
+
+async function generateCopy(property: {
+  typology: string;
+  location: string;
+  price: string;
+  area: string;
+  bedrooms: string;
+  bathrooms: string;
+  features?: string;
+}): Promise<CopyBlock> {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) throw new Error('GROQ_API_KEY não configurada');
+
+  const userPrompt = `Gera copy completo para este imóvel:
+Tipo + Tipologia: ${property.typology}
+Localidade: ${property.location}
+Preço: ${property.price}
+Área: ${property.area} m²
+Quartos: ${property.bedrooms}
+WC: ${property.bathrooms}
+${property.features ? `Destaques: ${property.features}` : ''}
+
+Devolve apenas o JSON pedido, sem markdown, sem explicações.`;
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${groqKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: COPY_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+      max_tokens: 2000,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Groq error ${res.status}: ${err}`);
+  }
+
+  const data = await res.json() as { choices: Array<{ message: { content: string } }> };
+  const content = data.choices[0]?.message?.content;
+  if (!content) throw new Error('Groq devolveu resposta vazia');
+
+  return JSON.parse(content) as CopyBlock;
+}
+
 function downloadFile(url: string, dest: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const proto = url.startsWith('https') ? https : http;
@@ -194,7 +320,26 @@ export const generateAdsTask = task({
         })
       )).filter(Boolean) as string[];
 
-      await supabaseAdmin.from('jobs').update({ status: 'done', output_urls: outputUrls }).eq('id', jobId);
+      // Generate copy via Groq
+      let copy: CopyBlock | null = null;
+      try {
+        copy = await generateCopy({
+          typology: data.typology,
+          location: data.location,
+          price: data.price,
+          area: data.area,
+          bedrooms: data.bedrooms,
+          bathrooms: data.bathrooms,
+        });
+      } catch (copyErr: any) {
+        console.error('Copy generation failed (non-fatal):', copyErr.message);
+      }
+
+      await supabaseAdmin.from('jobs').update({
+        status: 'done',
+        output_urls: outputUrls,
+        ...(copy ? { copy } : {}),
+      }).eq('id', jobId);
 
     } catch (err: any) {
       await supabaseAdmin.from('jobs').update({ status: 'error', error: err.message }).eq('id', jobId);
