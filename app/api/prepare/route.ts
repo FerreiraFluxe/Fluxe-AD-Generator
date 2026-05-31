@@ -27,24 +27,26 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (insertErr || !job) {
-      return NextResponse.json({ error: 'Erro ao criar job' }, { status: 500 });
+      console.error('Insert error:', insertErr);
+      return NextResponse.json({ error: insertErr?.message || 'Erro ao criar job' }, { status: 500 });
     }
 
-    // Generate signed upload URLs — browser uploads directly to Supabase Storage
-    const uploads: { path: string; signedUrl: string; token: string }[] = [];
-    for (let i = 0; i < fileNames.length; i++) {
-      const ext = (fileNames[i] as string).split('.').pop()?.toLowerCase() || 'jpg';
-      const storagePath = `${job.id}/${i.toString().padStart(3, '0')}.${ext}`;
-      const { data, error } = await supabaseAdmin.storage
-        .from('inputs')
-        .createSignedUploadUrl(storagePath);
-      if (!error && data) {
-        uploads.push({ path: storagePath, signedUrl: data.signedUrl, token: data.token });
-      }
-    }
+    // Generate all signed upload URLs in parallel (was sequential = timeout with many photos)
+    const uploads = (await Promise.all(
+      (fileNames as string[]).map(async (name, i) => {
+        const ext = name.split('.').pop()?.toLowerCase() || 'jpg';
+        const storagePath = `${job.id}/${i.toString().padStart(3, '0')}.${ext}`;
+        const { data, error } = await supabaseAdmin.storage
+          .from('inputs')
+          .createSignedUploadUrl(storagePath, { upsert: true });
+        if (error || !data) { console.error('SignedURL error:', error); return null; }
+        return { path: storagePath, signedUrl: data.signedUrl, token: data.token };
+      })
+    )).filter(Boolean);
 
     return NextResponse.json({ jobId: job.id, uploads });
   } catch (err: any) {
+    console.error('prepare error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

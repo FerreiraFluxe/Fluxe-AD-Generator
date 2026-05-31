@@ -109,13 +109,18 @@ export default function Home() {
 
         {files.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-3">
-            {files.map((f, i) => (
+            {files.slice(0, 5).map((f, i) => (
               <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden bg-gray-100">
-                <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
+                <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" loading="lazy" />
                 <button onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}
                   className="absolute top-0 right-0 bg-black/60 text-white text-xs w-5 h-5 flex items-center justify-center rounded-bl-lg">×</button>
               </div>
             ))}
+            {files.length > 5 && (
+              <div className="w-16 h-16 rounded-lg bg-gray-200 flex items-center justify-center text-sm font-bold text-gray-600">
+                +{files.length - 5}
+              </div>
+            )}
           </div>
         )}
 
