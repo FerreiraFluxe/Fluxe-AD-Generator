@@ -175,7 +175,6 @@ async function createAdSet(adAccountId, token, campaignId, pageId, cityKey) {
     },
     optimization_goal: 'LEAD_GENERATION',
     billing_event: 'IMPRESSIONS',
-    destination_type: 'ON_AD',
     promoted_object: { page_id: pageId },
   });
   if (data.error) {
