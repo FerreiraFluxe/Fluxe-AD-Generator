@@ -335,10 +335,34 @@ export const generateAdsTask = task({
         console.error('Copy generation failed (non-fatal):', copyErr.message);
       }
 
+      // Create Meta campaign structure if client has an ad account
+      let metaResult: Record<string, unknown> | null = null;
+      const adAccountId = job.ad_account_id as string | null;
+      const destinationUrl = job.destination_url as string | null;
+      if (adAccountId) {
+        try {
+          const { createMetaCampaign } = require('../scripts/create-meta-campaign');
+          // Use square ad URLs only for creatives
+          const squareUrls = outputUrls.filter((u: string) => !u.includes('-story'));
+          metaResult = await createMetaCampaign({
+            adAccountId,
+            property: data,
+            copy,
+            squareImageUrls: squareUrls,
+            destinationUrl,
+          });
+          console.log('Meta campaign created:', metaResult);
+        } catch (metaErr: any) {
+          console.error('Meta campaign creation failed (non-fatal):', metaErr.message);
+          metaResult = { error: metaErr.message };
+        }
+      }
+
       await supabaseAdmin.from('jobs').update({
         status: 'done',
         output_urls: outputUrls,
         ...(copy ? { copy } : {}),
+        ...(metaResult ? { meta_result: metaResult } : {}),
       }).eq('id', jobId);
 
     } catch (err: any) {

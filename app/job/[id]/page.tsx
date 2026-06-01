@@ -12,6 +12,15 @@ interface CopyBlock {
   email_body: string;
 }
 
+interface MetaResult {
+  campaignId?: string;
+  adSetId?: string;
+  adIds?: string[];
+  pageId?: string;
+  portfolioUsed?: number;
+  error?: string;
+}
+
 interface Job {
   id: string;
   status: 'pending' | 'processing' | 'done' | 'error';
@@ -20,6 +29,9 @@ interface Job {
   error: string | null;
   copy: CopyBlock | null;
   approvals: Record<string, string> | null;
+  meta_result: MetaResult | null;
+  client_name: string | null;
+  ad_account_id: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -239,6 +251,25 @@ export default function JobPage() {
                 {downloading ? 'A criar ZIP...' : '⬇ Descarregar ZIP (10 ficheiros)'}
               </button>
             </div>
+
+            {/* Meta campaign result */}
+            {job.meta_result && (
+              <div className={`rounded-2xl p-4 mb-6 text-sm ${job.meta_result.error ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
+                {job.meta_result.error ? (
+                  <p className="text-red-700 font-medium">Meta: {job.meta_result.error}</p>
+                ) : (
+                  <div className="flex flex-wrap gap-4 items-center">
+                    <span className="text-green-700 font-semibold">✓ Campanha criada (PAUSED) · Portfolio {job.meta_result.portfolioUsed}</span>
+                    <a href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${job.ad_account_id}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="text-xs bg-blue-600 text-white px-3 py-1 rounded-full hover:bg-blue-700">
+                      Abrir no Ads Manager →
+                    </a>
+                    <span className="text-green-600 text-xs">{job.meta_result.adIds?.length ?? 0} ads criados</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Copy block */}
             {job.copy && (

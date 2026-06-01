@@ -17,12 +17,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Sem ficheiros' }, { status: 400 });
     }
 
+    const { clientId, clientName, adAccountId, destinationUrl } = body;
+
     const { data: job, error: insertErr } = await supabaseAdmin
       .from('jobs')
       .insert({
         status: 'pending',
         listing_url: listingUrl || null,
         property: (typology && location && price) ? { typology, location, price, area, bedrooms, bathrooms } : null,
+        client_id: clientId || null,
+        client_name: clientName || null,
+        ad_account_id: adAccountId || null,
+        destination_url: destinationUrl || null,
       })
       .select('id')
       .single();

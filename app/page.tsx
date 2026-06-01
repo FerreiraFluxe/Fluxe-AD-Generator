@@ -1,6 +1,12 @@
 'use client';
-import { useState, useRef, DragEvent, ChangeEvent } from 'react';
+import { useState, useRef, useEffect, DragEvent, ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
+
+interface Client {
+  id: string;
+  name: string;
+  adAccountId: string | null;
+}
 
 export default function Home() {
   const router = useRouter();
@@ -12,6 +18,19 @@ export default function Home() {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const [destinationUrl, setDestinationUrl] = useState('');
+
+  useEffect(() => {
+    fetch('/api/clients')
+      .then(r => r.json())
+      .then((data: Client[]) => setClients(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
+  const selectedClient = clients.find(c => c.id === selectedClientId) ?? null;
 
   function addFiles(incoming: FileList | null) {
     if (!incoming) return;
@@ -27,9 +46,6 @@ export default function Home() {
     addFiles(e.dataTransfer.files);
   }
 
-  const [uploadProgress, setUploadProgress] = useState(0);
-
-  // Strip U+FEFF (BOM) — Windows clipboard and some file APIs prepend it
   function clean(s: string) {
     return Array.from(s).filter(c => c.charCodeAt(0) !== 0xFEFF).join('').trim();
   }
@@ -49,7 +65,6 @@ export default function Home() {
     if (!listingUrl && !manual.typology) { setError('Adiciona o link do anúncio ou preenche os dados manualmente.'); return; }
     setLoading(true); setError(''); setUploadProgress(0);
     try {
-      // Step 1: create job + get signed upload URLs
       setError('A preparar...');
       const prepRes = await fetch('/api/prepare', {
         method: 'POST',
@@ -57,20 +72,22 @@ export default function Home() {
         body: JSON.stringify({
           fileNames: files.map(f => f.name),
           listingUrl: listingUrl ? clean(listingUrl) : undefined,
+          clientId: selectedClientId || undefined,
+          clientName: selectedClient?.name || undefined,
+          adAccountId: selectedClient?.adAccountId || undefined,
+          destinationUrl: destinationUrl ? clean(destinationUrl) : undefined,
           ...(showManual ? manual : {}),
         }),
       });
       const prep = await prepRes.json();
       if (!prepRes.ok) throw new Error('Prepare: ' + (prep.error || prepRes.status));
 
-      // Step 2: upload via XHR (avoids Fetch ByteString restriction on file MIME types)
       setError('A enviar fotos...');
       await Promise.all(prep.uploads.map(async (u: { signedUrl: string }, i: number) => {
         await xhrPut(clean(u.signedUrl), files[i]);
         setUploadProgress(p => p + 1);
       }));
 
-      // Step 3: trigger generation
       setError('A iniciar geração...');
       const jobRes = await fetch('/api/jobs', {
         method: 'POST',
@@ -96,6 +113,44 @@ export default function Home() {
           <p className="text-gray-500 mt-1 text-sm">Gera 5 anúncios Meta prontos a publicar</p>
         </div>
 
+        {/* Client selector */}
+        <div className="mb-5">
+          <label className="block text-sm font-semibold text-gray-700 mb-1">
+            Cliente <span className="font-normal text-gray-400">(opcional)</span>
+          </label>
+          <select
+            value={selectedClientId}
+            onChange={e => setSelectedClientId(e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-red-400 bg-white">
+            <option value="">— Seleccionar cliente —</option>
+            {clients.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.name}{c.adAccountId ? '' : ' (sem Meta)'}
+              </option>
+            ))}
+          </select>
+          {selectedClient?.adAccountId && (
+            <p className="text-xs text-green-600 mt-1">Ad Account: {selectedClient.adAccountId} · campanha criada automaticamente</p>
+          )}
+        </div>
+
+        {/* Destination URL — shown when client with ad account is selected */}
+        {selectedClient?.adAccountId && (
+          <div className="mb-5">
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              Landing page <span className="font-normal text-gray-400">(URL de destino dos anúncios)</span>
+            </label>
+            <input
+              type="url"
+              value={destinationUrl}
+              onChange={e => setDestinationUrl(e.target.value)}
+              placeholder="https://..."
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-red-400"
+            />
+          </div>
+        )}
+
+        {/* Photo drop zone */}
         <div
           onDragOver={e => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
@@ -182,7 +237,9 @@ export default function Home() {
             ? uploadProgress < files.length && files.length > 0
               ? `A enviar fotos... ${uploadProgress}/${files.length}`
               : 'A iniciar geração...'
-            : 'Gerar 5 Anúncios →'}
+            : selectedClient?.adAccountId
+              ? `Gerar 5 Anúncios + Criar Campanha Meta →`
+              : 'Gerar 5 Anúncios →'}
         </button>
 
         {loading && files.length > 0 && uploadProgress < files.length && (
@@ -195,7 +252,8 @@ export default function Home() {
         )}
 
         <p className="mt-4 text-center text-xs text-gray-400">
-          Leva cerca de 60 segundos · 5 square + 5 story = 10 ficheiros PNG
+          Leva cerca de 60–90s · 5 square + 5 story = 10 ficheiros PNG
+          {selectedClient?.adAccountId ? ' · campanha Meta criada automaticamente' : ''}
         </p>
       </div>
     </main>
