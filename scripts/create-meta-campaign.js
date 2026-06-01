@@ -54,15 +54,32 @@ async function uploadImageUrl(adAccountId, token, imageUrl, filename) {
   return images[key]?.hash ?? null;
 }
 
-// Creates the Meta Instant Lead Form using the AI-generated copy
+// Search Meta's geo database for a city key (for radius targeting)
+async function findCityKey(locationString, token) {
+  const cityName = locationString.split(',')[0].trim();
+  try {
+    const res = await metaGet(
+      `search?type=adgeolocation&q=${encodeURIComponent(cityName)}&country_code=PT&location_types=city&limit=5`,
+      token
+    );
+    if (res.data && res.data.length > 0) {
+      const exact = res.data.find(l => l.name.toLowerCase() === cityName.toLowerCase());
+      return (exact || res.data[0]).key;
+    }
+  } catch {}
+  return null;
+}
+
+// Creates the Meta Instant Lead Form using AI-generated copy
 async function createLeadForm(pageId, token, copy, property, destinationUrl) {
+  const city = property.location.split(',')[0].trim().toUpperCase();
+  const formName = `Fluxe Form - ${property.typology} ${city}`;
   const formTitle = copy?.form_title || `${property.typology} em ${property.location}`;
   const formDesc = copy?.form_description || '';
-  // Parse bullets: each non-empty line is one bullet
   const bullets = formDesc.split('\n').map(l => l.trim()).filter(Boolean);
 
   const data = await metaPost(`${pageId}/leadgen_forms`, token, {
-    name: `Formulário - ${property.typology} ${property.location} - Fluxe ${new Date().toISOString().slice(0, 10)}`,
+    name: formName,
     questions: [
       { type: 'FULL_NAME' },
       { type: 'EMAIL' },
@@ -90,6 +107,7 @@ async function createLeadForm(pageId, token, copy, property, destinationUrl) {
   return data.id;
 }
 
+// Campaign with CBO: budget lives here, not on the ad set
 async function createCampaign(adAccountId, token, property) {
   const name = `${property.typology} ${property.location} - Fluxe ${new Date().toISOString().slice(0, 10)}`;
   const data = await metaPost(`act_${adAccountId}/campaigns`, token, {
@@ -97,27 +115,30 @@ async function createCampaign(adAccountId, token, property) {
     objective: 'OUTCOME_LEADS',
     special_ad_categories: ['HOUSING'],
     status: 'PAUSED',
+    daily_budget: 500, // €5 placeholder — user adjusts before publishing
+    bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
   });
   if (data.error) throw new Error(`Campaign creation failed: ${JSON.stringify(data.error)}`);
   return data.id;
 }
 
-async function createAdSet(adAccountId, token, campaignId, pageId) {
+// Ad set — no budget (CBO), city radius targeting, FB+IG placements
+async function createAdSet(adAccountId, token, campaignId, pageId, cityKey) {
   const data = await metaPost(`act_${adAccountId}/adsets`, token, {
     name: 'Ad Set - Fluxe',
     campaign_id: campaignId,
     status: 'PAUSED',
     targeting: {
-      geo_locations: { countries: ['PT'] },
+      geo_locations: cityKey
+        ? { cities: [{ key: cityKey, radius: 17, distance_unit: 'kilometer' }] }
+        : { countries: ['PT'] },
       publisher_platforms: ['facebook', 'instagram'],
-      facebook_positions: ['feed', 'reels'],
+      facebook_positions: ['feed', 'story', 'reels'],
       instagram_positions: ['stream', 'story', 'reels'],
     },
     optimization_goal: 'LEAD_GENERATION',
     billing_event: 'IMPRESSIONS',
-    daily_budget: 500, // €5 placeholder — user adjusts before publishing
-    bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
-    destination_type: 'ON_AD', // Lead Gen Form destination
+    destination_type: 'ON_AD',
     ...(pageId ? { promoted_object: { page_id: pageId } } : {}),
   });
   if (data.error) throw new Error(`Ad set creation failed: ${JSON.stringify(data.error)}`);
@@ -133,8 +154,9 @@ async function createAdCreative(adAccountId, token, pageId, imageHash, copyBody,
         image_hash: imageHash,
         message: copyBody,
         name: copyTitle || '',
+        description: copyBody,
         call_to_action: {
-          type: 'SIGN_UP',
+          type: 'LEARN_MORE',
           value: leadFormId ? { lead_gen_form_id: leadFormId } : {},
         },
       },
@@ -163,7 +185,10 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImageUrls
   if (!adAccountId) throw new Error('adAccountId is required');
 
   const token = await resolveToken(adAccountId);
-  const pageId = await getPageId(adAccountId, token);
+  const [pageId, cityKey] = await Promise.all([
+    getPageId(adAccountId, token),
+    findCityKey(property.location, token),
+  ]);
 
   // Upload all square images in parallel
   const imageHashes = await Promise.all(
@@ -171,13 +196,13 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImageUrls
   );
 
   const campaignId = await createCampaign(adAccountId, token, property);
-  const adSetId = await createAdSet(adAccountId, token, campaignId, pageId);
+  const adSetId = await createAdSet(adAccountId, token, campaignId, pageId, cityKey);
 
   const adIds = [];
   let leadFormId = null;
 
   if (pageId) {
-    // Create one Lead Gen Form shared across all 5 ads
+    // One form shared across all 5 ads
     try {
       leadFormId = await createLeadForm(pageId, token, copy, property, destinationUrl);
     } catch (err) {
