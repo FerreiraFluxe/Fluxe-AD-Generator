@@ -272,7 +272,11 @@ export default function JobPage() {
             {job.meta_result && (
               <div className={`rounded-2xl p-4 mb-6 text-sm ${job.meta_result.error ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
                 {job.meta_result.error ? (
-                  <p className="text-red-700 font-medium">Meta: {job.meta_result.error}</p>
+                  <p className="text-red-700 font-medium">
+                    {job.meta_result.error.split(/(https?:\/\/\S+)/).map((part, i) =>
+                      part.startsWith('http') ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="underline">{part}</a> : part
+                    )}
+                  </p>
                 ) : (
                   <div className="flex flex-wrap gap-4 items-center">
                     <span className="text-green-700 font-semibold">✓ Campanha criada (PAUSED) · Portfolio {job.meta_result.portfolioUsed}</span>

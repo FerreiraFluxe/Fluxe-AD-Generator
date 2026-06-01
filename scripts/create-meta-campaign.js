@@ -140,6 +140,11 @@ async function createCampaign(adAccountId, token, property) {
 }
 
 // Ad set — no budget (CBO), city radius targeting, FB+IG placements
+async function acceptLeadGenToS(pageId, token) {
+  const data = await metaPost(`leadgen_tos`, token, { page_id: pageId });
+  return !data.error;
+}
+
 async function createAdSet(adAccountId, token, campaignId, pageId, cityKey) {
   const data = await metaPost(`act_${adAccountId}/adsets`, token, {
     name: 'Ad Set - Fluxe',
@@ -158,7 +163,12 @@ async function createAdSet(adAccountId, token, campaignId, pageId, cityKey) {
     destination_type: 'ON_AD',
     promoted_object: { page_id: pageId },
   });
-  if (data.error) throw new Error(`Ad set creation failed: ${JSON.stringify(data.error)}`);
+  if (data.error) {
+    if (data.error.error_subcode === 1815089) {
+      throw new Error(`TOS_REQUIRED|${pageId}`);
+    }
+    throw new Error(`Ad set creation failed: ${JSON.stringify(data.error)}`);
+  }
   return data.id;
 }
 
@@ -217,7 +227,24 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImagePath
   );
 
   const campaignId = await createCampaign(adAccountId, token, property);
-  const adSetId = await createAdSet(adAccountId, token, campaignId, pageId, cityKey);
+
+  let adSetId;
+  try {
+    adSetId = await createAdSet(adAccountId, token, campaignId, pageId, cityKey);
+  } catch (err) {
+    if (err.message.startsWith('TOS_REQUIRED|')) {
+      const pid = err.message.split('|')[1];
+      // Try to auto-accept via API first
+      const accepted = await acceptLeadGenToS(pid, token);
+      if (accepted) {
+        adSetId = await createAdSet(adAccountId, token, campaignId, pageId, cityKey);
+      } else {
+        throw new Error(`A página Facebook (${pid}) precisa de aceitar os Termos para Lead Ads. Abre este link e aceita (1 vez): https://www.facebook.com/ads/leadgen/tos?page_id=${pid}`);
+      }
+    } else {
+      throw err;
+    }
+  }
 
   const adIds = [];
   let leadFormId = null;
