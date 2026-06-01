@@ -33,18 +33,26 @@ async function resolveToken(adAccountId) {
 
 async function getPageId(adAccountId, token) {
   try {
+    // Method 1: borrow page_id from existing ad sets in this account
+    const adsets = await metaGet(`act_${adAccountId}/adsets?fields=promoted_object&limit=20`, token);
+    for (const adset of (adsets.data || [])) {
+      if (adset.promoted_object?.page_id) return adset.promoted_object.page_id;
+    }
+
+    // Method 2: via business owned/client pages
     const account = await metaGet(`act_${adAccountId}?fields=business`, token);
     const businessId = account.business?.id;
     if (businessId) {
-      // Try owned_pages then client_pages
       for (const edge of ['owned_pages', 'client_pages']) {
         const res = await metaGet(`${businessId}/${edge}?fields=id,name&limit=1`, token);
         if (res.data?.[0]?.id) return res.data[0].id;
       }
     }
-    // Fallback: pages accessible by this token
+
+    // Method 3: pages accessible by this token directly
     const me = await metaGet(`me/accounts?fields=id,name&limit=1`, token);
     if (me.data?.[0]?.id) return me.data[0].id;
+
   } catch {}
   return null;
 }
