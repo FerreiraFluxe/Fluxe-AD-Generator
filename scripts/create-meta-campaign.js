@@ -198,7 +198,9 @@ async function createAdCreative(adAccountId, token, pageId, imageHash, copyBody,
         description: copyBody,
         call_to_action: {
           type: 'LEARN_MORE',
-          value: leadFormId ? { lead_gen_form_id: leadFormId } : {},
+          value: leadFormId
+            ? { lead_gen_form_id: leadFormId }
+            : { link: 'https://fluxe.pt' },
         },
       },
     },
@@ -266,16 +268,19 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImagePath
 
   const adIds = [];
   let leadFormId = null;
+  let leadFormError = null;
 
   if (pageId) {
     // One form shared across all 5 ads
     try {
       leadFormId = await createLeadForm(pageId, token, copy, property, null);
     } catch (err) {
-      console.error('Lead form creation failed (continuing without form):', err.message);
+      leadFormError = err.message;
+      console.error('Lead form creation failed:', err.message);
     }
 
     const titles = copy?.titles ?? [];
+    const adErrors = [];
     for (let i = 0; i < imageHashes.length; i++) {
       const hash = imageHashes[i];
       if (!hash) continue;
@@ -288,9 +293,12 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImagePath
         const adId = await createAd(adAccountId, token, adSetId, creativeId, `Ad ${i + 1} - ${title}`);
         adIds.push(adId);
       } catch (err) {
-        console.error(`Ad ${i + 1} creation failed (skipping):`, err.message);
+        adErrors.push(`Ad ${i + 1}: ${err.message}`);
+        console.error(`Ad ${i + 1} creation failed:`, err.message);
       }
     }
+
+    if (adErrors.length) console.error('Ad errors:', adErrors);
   }
 
   return {
@@ -299,6 +307,7 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImagePath
     adIds,
     pageId,
     leadFormId,
+    leadFormError,
     portfolioUsed: PORTFOLIO_TOKENS.indexOf(token) + 1,
   };
 }
