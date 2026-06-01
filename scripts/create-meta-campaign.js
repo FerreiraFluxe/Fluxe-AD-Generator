@@ -121,7 +121,6 @@ async function createLeadForm(pageId, token, copy, property, destinationUrl) {
     },
     privacy_policy: {
       url: 'https://fluxe.pt/privacidade',
-      link_caption: 'Política de Privacidade',
     },
     thank_you_page: {
       title: 'Obrigado pelo teu interesse!',
