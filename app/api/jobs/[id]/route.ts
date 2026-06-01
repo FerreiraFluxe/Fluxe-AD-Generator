@@ -14,3 +14,18 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (error || !job) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(job);
 }
+
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  // Delete storage files from both buckets
+  for (const bucket of ['inputs', 'outputs']) {
+    const { data: files } = await supabaseAdmin.storage.from(bucket).list(id);
+    if (files?.length) {
+      await supabaseAdmin.storage.from(bucket).remove(files.map(f => `${id}/${f.name}`));
+    }
+  }
+
+  await supabaseAdmin.from('jobs').delete().eq('id', id);
+  return NextResponse.json({ ok: true });
+}

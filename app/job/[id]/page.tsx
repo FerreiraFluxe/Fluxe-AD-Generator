@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 interface CopyBlock {
@@ -172,9 +172,11 @@ function CopySection({ copy, approvals, jobId, onApprovalsChange }: {
 
 export default function JobPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [job, setJob] = useState<Job | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [approvals, setApprovals] = useState<Record<string, string>>({});
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -200,6 +202,13 @@ export default function JobPage() {
     const data = await res.json() as { approvals: Record<string, string> };
     setApprovals(data.approvals);
   }, [id]);
+
+  const deleteSession = useCallback(async () => {
+    if (!confirm('Apagar todas as imagens e dados desta sessão?')) return;
+    setDeleting(true);
+    await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+    router.push('/');
+  }, [id, router]);
 
   const squareUrls = job?.output_urls?.filter(u => !u.includes('-story')) ?? [];
   const storyUrls = job?.output_urls?.filter(u => u.includes('-story')) ?? [];
@@ -244,12 +253,18 @@ export default function JobPage() {
 
         {job?.status === 'done' && job.output_urls && (
           <>
-            <div className="flex gap-3 mb-6">
+            <div className="flex gap-3 mb-6 flex-wrap">
               <button
                 onClick={async () => { setDownloading(true); await downloadAllAsZip(job.output_urls!, id); setDownloading(false); }}
                 disabled={downloading}
                 className="bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white font-bold px-6 py-3 rounded-xl text-sm transition-colors">
                 {downloading ? 'A criar ZIP...' : '⬇ Descarregar ZIP (10 ficheiros)'}
+              </button>
+              <button
+                onClick={deleteSession}
+                disabled={deleting}
+                className="bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-600 font-semibold px-4 py-3 rounded-xl text-sm transition-colors">
+                {deleting ? 'A apagar...' : '🗑 Apagar sessão'}
               </button>
             </div>
 
