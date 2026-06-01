@@ -338,18 +338,16 @@ export const generateAdsTask = task({
       // Create Meta campaign structure if client has an ad account
       let metaResult: Record<string, unknown> | null = null;
       const adAccountId = job.ad_account_id as string | null;
-      const destinationUrl = job.destination_url as string | null;
       if (adAccountId) {
         try {
           const { createMetaCampaign } = require('../scripts/create-meta-campaign');
-          // Use square ad URLs only for creatives
-          const squareUrls = outputUrls.filter((u: string) => !u.includes('-story'));
+          // Pass local file paths (still on disk here) so Meta gets bytes, not a URL
+          const squarePaths = generatedPaths.filter((p: string) => !p.includes('-story'));
           metaResult = await createMetaCampaign({
             adAccountId,
             property: data,
             copy,
-            squareImageUrls: squareUrls,
-            destinationUrl,
+            squareImagePaths: squarePaths,
           });
           console.log('Meta campaign created:', metaResult);
         } catch (metaErr: any) {

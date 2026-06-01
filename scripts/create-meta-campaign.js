@@ -43,10 +43,13 @@ async function getPageId(adAccountId, token) {
   }
 }
 
-async function uploadImageUrl(adAccountId, token, imageUrl, filename) {
+// Upload image to Meta as base64 bytes (avoids URL permission issues)
+async function uploadImageFile(adAccountId, token, filePath, filename) {
+  const fs = require('fs');
+  const bytes = fs.readFileSync(filePath).toString('base64');
   const data = await metaPost(`act_${adAccountId}/adimages`, token, {
-    url: imageUrl,
-    filename: filename,
+    bytes,
+    filename,
   });
   if (data.error) throw new Error(`Image upload failed: ${JSON.stringify(data.error)}`);
   const images = data.images || {};
@@ -181,7 +184,7 @@ async function createAd(adAccountId, token, adSetId, creativeId, name) {
  * Creates the full campaign structure in Meta Ads Manager (all PAUSED).
  * Returns { campaignId, adSetId, adIds, pageId, leadFormId, portfolioUsed }
  */
-async function createMetaCampaign({ adAccountId, property, copy, squareImageUrls, destinationUrl }) {
+async function createMetaCampaign({ adAccountId, property, copy, squareImagePaths }) {
   if (!adAccountId) throw new Error('adAccountId is required');
 
   const token = await resolveToken(adAccountId);
@@ -190,9 +193,11 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImageUrls
     findCityKey(property.location, token),
   ]);
 
-  // Upload all square images in parallel
+  // Upload images as bytes — avoids token permission issues with URL fetching
   const imageHashes = await Promise.all(
-    squareImageUrls.map((url, i) => uploadImageUrl(adAccountId, token, url, `ad-${String(i + 1).padStart(2, '0')}.png`))
+    squareImagePaths.map((filePath, i) =>
+      uploadImageFile(adAccountId, token, filePath, `ad-${String(i + 1).padStart(2, '0')}.png`)
+    )
   );
 
   const campaignId = await createCampaign(adAccountId, token, property);
@@ -204,7 +209,7 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImageUrls
   if (pageId) {
     // One form shared across all 5 ads
     try {
-      leadFormId = await createLeadForm(pageId, token, copy, property, destinationUrl);
+      leadFormId = await createLeadForm(pageId, token, copy, property, null);
     } catch (err) {
       console.error('Lead form creation failed (continuing without form):', err.message);
     }
