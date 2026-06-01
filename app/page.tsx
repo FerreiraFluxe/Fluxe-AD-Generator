@@ -21,8 +21,6 @@ export default function Home() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState('');
-  const [destinationUrl, setDestinationUrl] = useState('');
-
   useEffect(() => {
     fetch('/api/clients')
       .then(r => r.json())
@@ -75,7 +73,6 @@ export default function Home() {
           clientId: selectedClientId || undefined,
           clientName: selectedClient?.name || undefined,
           adAccountId: selectedClient?.adAccountId || undefined,
-          destinationUrl: destinationUrl ? clean(destinationUrl) : undefined,
           ...(showManual ? manual : {}),
         }),
       });
@@ -133,22 +130,6 @@ export default function Home() {
             <p className="text-xs text-green-600 mt-1">Ad Account: {selectedClient.adAccountId} · campanha criada automaticamente</p>
           )}
         </div>
-
-        {/* Destination URL — shown when client with ad account is selected */}
-        {selectedClient?.adAccountId && (
-          <div className="mb-5">
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Landing page <span className="font-normal text-gray-400">(URL de destino dos anúncios)</span>
-            </label>
-            <input
-              type="url"
-              value={destinationUrl}
-              onChange={e => setDestinationUrl(e.target.value)}
-              placeholder="https://..."
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-red-400"
-            />
-          </div>
-        )}
 
         {/* Photo drop zone */}
         <div
@@ -253,7 +234,7 @@ export default function Home() {
 
         <p className="mt-4 text-center text-xs text-gray-400">
           Leva cerca de 60–90s · 5 square + 5 story = 10 ficheiros PNG
-          {selectedClient?.adAccountId ? ' · campanha Meta criada automaticamente' : ''}
+          {selectedClient?.adAccountId ? ' · campanha Meta + formulário criados automaticamente' : ''}
         </p>
       </div>
     </main>

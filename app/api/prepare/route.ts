@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Sem ficheiros' }, { status: 400 });
     }
 
-    const { clientId, clientName, adAccountId, destinationUrl } = body;
+    const { clientId, clientName, adAccountId } = body;
 
     const { data: job, error: insertErr } = await supabaseAdmin
       .from('jobs')
@@ -28,7 +28,6 @@ export async function POST(req: NextRequest) {
         client_id: clientId || null,
         client_name: clientName || null,
         ad_account_id: adAccountId || null,
-        destination_url: destinationUrl || null,
       })
       .select('id')
       .single();
