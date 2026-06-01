@@ -160,9 +160,9 @@ async function acceptLeadGenToS(pageId, token) {
   return !data2.error;
 }
 
-async function createAdSet(adAccountId, token, campaignId, pageId, cityKey) {
+async function createAdSet(adAccountId, token, campaignId, pageId, cityKey, optimizationGoal = 'LEAD_GENERATION') {
   const data = await metaPost(`act_${adAccountId}/adsets`, token, {
-    name: 'Ad Set - Fluxe',
+    name: optimizationGoal === 'LEAD_GENERATION' ? 'Ad Set - Fluxe' : 'Ad Set - Fluxe (muda objetivo p/ Leads antes de publicar)',
     campaign_id: campaignId,
     status: 'PAUSED',
     targeting: {
@@ -173,7 +173,7 @@ async function createAdSet(adAccountId, token, campaignId, pageId, cityKey) {
       facebook_positions: ['feed', 'story'],
       instagram_positions: ['stream', 'story', 'reels'],
     },
-    optimization_goal: 'LEAD_GENERATION',
+    optimization_goal: optimizationGoal,
     billing_event: 'IMPRESSIONS',
     promoted_object: { page_id: pageId },
   });
@@ -244,16 +244,20 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImagePath
 
   let adSetId;
   try {
-    adSetId = await createAdSet(adAccountId, token, campaignId, pageId, cityKey);
+    adSetId = await createAdSet(adAccountId, token, campaignId, pageId, cityKey, 'LEAD_GENERATION');
   } catch (err) {
     if (err.message.startsWith('TOS_REQUIRED|')) {
       const pid = err.message.split('|')[1];
-      // Try to auto-accept via API first
-      const accepted = await acceptLeadGenToS(pid, token);
-      if (accepted) {
-        adSetId = await createAdSet(adAccountId, token, campaignId, pageId, cityKey);
-      } else {
-        throw new Error(`Lead Ads ToS não aceite para a página ${pid}. Aceita aqui: https://www.facebook.com/ads/leadgen/tos?page_id=${pid} — Se já aceitaste, vai a Meta Business Manager → Definições → Integrações → Acesso a Leads e confirma o acesso.`);
+      await acceptLeadGenToS(pid, token);
+      try {
+        adSetId = await createAdSet(adAccountId, token, campaignId, pageId, cityKey, 'LEAD_GENERATION');
+      } catch (retryErr) {
+        if (retryErr.message.startsWith('TOS_REQUIRED|')) {
+          // ToS still blocked — fall back to REACH so the campaign structure gets created
+          adSetId = await createAdSet(adAccountId, token, campaignId, pageId, cityKey, 'REACH');
+        } else {
+          throw retryErr;
+        }
       }
     } else {
       throw err;
