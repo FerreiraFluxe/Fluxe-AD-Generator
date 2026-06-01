@@ -115,20 +115,21 @@ function cleanArea(raw) {
 function parseMarkdown(markdown, metadata) {
   const result = { typology: null, location: null, price: null, area: null, bedrooms: null, bathrooms: null, features: [], description: null };
   const text = markdown || '';
+  const lines = text.split('\n');
 
   // Price: 244.000€ / 244 000 € / 244,000€
   const priceMatch = text.match(/\b(\d{1,3}(?:[.\s]\d{3})*(?:[.,]\d+)?)\s*€/);
   if (priceMatch) result.price = priceMatch[1].replace(/\s/g, '.') + '€';
 
-  // Area: 73 m² / 73m2 / 73 m2
+  // Area: 73 m² / 73m2
   const areaMatch = text.match(/\b(\d+)\s*m[²2]/i);
   if (areaMatch) result.area = areaMatch[1] + ' m²';
 
-  // Typology: T1/T2/T3/T4/T5
+  // Typology: T1–T5
   const typoMatch = text.match(/\b(T[0-9](?:\+\d)?)\b/i);
   if (typoMatch) result.typology = typoMatch[1].toUpperCase();
 
-  // Bedrooms from explicit text
+  // Bedrooms
   const bedroomMatch = text.match(/(\d+)\s*[Qq]uartos?/);
   if (bedroomMatch) result.bedrooms = bedroomMatch[1];
   else if (result.typology) {
@@ -136,26 +137,39 @@ function parseMarkdown(markdown, metadata) {
     if (!isNaN(n)) result.bedrooms = String(n);
   }
 
-  // Bathrooms: 1 WC / 2 casas de banho
+  // Bathrooms
   const bathMatch = text.match(/(\d+)\s*(?:WC|wc|[Cc]asa[s]?\s+de\s+[Bb]anho)/);
   if (bathMatch) result.bathrooms = bathMatch[1];
 
-  // Location from metadata title / og:title, strip price/typology noise
+  // Location from metadata
   const titleRaw = (metadata && (metadata['og:title'] || metadata.title)) || '';
   if (titleRaw) {
-    // Try to extract location: strip price/typology patterns, grab location-like segment
     const locMatch = titleRaw.match(/(?:em|in)\s+([^,|–\-]+)/i) ||
                      titleRaw.match(/[-–,]\s*([A-ZÁÉÍÓÚÃÕÂÊÔÇÀ][^,|–\-]{3,})/);
     result.location = locMatch ? locMatch[1].trim() : titleRaw.split(/[-–,|]/)[0].trim();
   }
 
-  // Description: first substantial paragraph (>60 chars)
-  const paragraphs = text.split(/\n+/).filter(l => l.length > 60 && !l.startsWith('#'));
-  if (paragraphs.length) result.description = paragraphs[0].trim();
+  // Description: substantial paragraphs that are NOT markdown links or navigation
+  const descCandidates = lines.filter(l => {
+    const t = l.trim();
+    if (t.length < 80) return false;
+    if (/^\[.*\]\(.*\)$/.test(t)) return false;   // pure link line
+    if (/\]\(https?:\/\//.test(t)) return false;   // line with embedded links
+    if (/^#{1,6}\s/.test(t)) return false;          // header
+    return true;
+  });
+  if (descCandidates.length) result.description = descCandidates[0].trim();
 
-  // Features: lines starting with bullet markers
-  const bullets = text.match(/^[\-\*•]\s+.+/gm) || [];
-  result.features = bullets.slice(0, 10).map(b => b.replace(/^[\-\*•]\s+/, '').trim());
+  // Features: bullet points that are NOT links
+  const propertyKeywords = /quarto|casa de banho|wc|garagem|piscina|terraço|jardim|varanda|ar condicionado|vista|suite|lareira|elevador|estacionamento|arrecadação|box|parquet|duplo vidro|cozinha|sala|luz natural|sotão|cave|rés[- ]do[- ]chão/i;
+  const allBullets = lines
+    .filter(l => /^[\s]*[\-\*•]\s+/.test(l))
+    .map(l => l.replace(/^[\s]*[\-\*•]\s+/, '').trim())
+    .filter(l => l.length > 2 && !/\]\(https?:\/\//.test(l) && !/^\[/.test(l));
+
+  // Prefer lines with property keywords, fallback to all non-link bullets
+  const keywordBullets = allBullets.filter(l => propertyKeywords.test(l));
+  result.features = (keywordBullets.length ? keywordBullets : allBullets).slice(0, 12);
 
   return result;
 }

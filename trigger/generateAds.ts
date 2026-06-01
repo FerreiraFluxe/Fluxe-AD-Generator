@@ -119,8 +119,10 @@ Preço: ${property.price}
 Área: ${property.area} m²
 Quartos: ${property.bedrooms}
 WC: ${property.bathrooms}
-${property.features ? `Destaques: ${property.features}` : ''}
+${property.features ? `Características: ${property.features}` : ''}
+${property.description ? `Descrição original do anúncio: ${property.description}` : ''}
 
+Usa as características e descrição para criar copy específico e concreto. Não inventes factos que não estejam nos dados acima.
 Devolve apenas o JSON pedido, sem markdown, sem explicações.`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -273,6 +275,8 @@ export const generateAdsTask = task({
           area: scraped.area || '',
           bedrooms: scraped.bedrooms || '',
           bathrooms: scraped.bathrooms || '',
+          features: Array.isArray(scraped.features) ? scraped.features.join(', ') : (scraped.features || ''),
+          description: scraped.description || '',
         };
         await supabaseAdmin.from('jobs').update({ property }).eq('id', jobId);
       }
@@ -290,6 +294,8 @@ export const generateAdsTask = task({
         area: property.area,
         bedrooms: property.bedrooms,
         bathrooms: property.bathrooms,
+        features: property.features || '',
+        description: property.description || '',
       };
 
       const { generateAd } = require('../scripts/generate-ad');
