@@ -126,6 +126,7 @@ async function createLeadForm(pageId, token, copy, property, destinationUrl) {
       title: 'Obrigado pelo teu interesse!',
       body: 'Entraremos em contacto brevemente para agendar a tua visita.',
       website_url: destinationUrl || 'https://fluxe.pt',
+      button_type: 'VIEW_WEBSITE',
     },
     locale: 'pt_PT',
     block_display_for_non_targeted_viewer: false,
