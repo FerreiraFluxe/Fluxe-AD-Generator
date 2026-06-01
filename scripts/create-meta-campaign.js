@@ -136,7 +136,7 @@ async function createAdSet(adAccountId, token, campaignId, pageId, cityKey) {
         ? { cities: [{ key: cityKey, radius: 17, distance_unit: 'kilometer' }] }
         : { countries: ['PT'] },
       publisher_platforms: ['facebook', 'instagram'],
-      facebook_positions: ['feed', 'story', 'reels'],
+      facebook_positions: ['feed', 'story'],
       instagram_positions: ['stream', 'story', 'reels'],
     },
     optimization_goal: 'LEAD_GENERATION',
