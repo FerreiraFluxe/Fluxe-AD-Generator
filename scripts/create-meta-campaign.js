@@ -187,23 +187,19 @@ async function createAdSet(adAccountId, token, campaignId, pageId, cityKey, opti
 }
 
 async function createAdCreative(adAccountId, token, pageId, imageHash, copyBody, copyTitle, leadFormId) {
+  const linkData = {
+    image_hash: imageHash,
+    message: copyBody,
+    name: copyTitle || '',
+    call_to_action: leadFormId
+      ? { type: 'SIGN_UP', value: { lead_gen_form_id: leadFormId } }
+      : { type: 'LEARN_MORE', value: { link: 'https://fluxe.pt' } },
+  };
+  if (!leadFormId) linkData.link = 'https://fluxe.pt';
+
   const data = await metaPost(`act_${adAccountId}/adcreatives`, token, {
     name: `Creative - ${copyTitle || 'Fluxe Ad'}`,
-    object_story_spec: {
-      page_id: pageId,
-      link_data: {
-        image_hash: imageHash,
-        message: copyBody,
-        name: copyTitle || '',
-        description: copyBody,
-        call_to_action: {
-          type: 'LEARN_MORE',
-          value: leadFormId
-            ? { lead_gen_form_id: leadFormId }
-            : { link: 'https://fluxe.pt' },
-        },
-      },
-    },
+    object_story_spec: { page_id: pageId, link_data: linkData },
   });
   if (data.error) throw new Error(`Creative creation failed: ${JSON.stringify(data.error)}`);
   return data.id;
