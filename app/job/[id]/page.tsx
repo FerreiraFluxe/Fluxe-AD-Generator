@@ -17,6 +17,7 @@ interface MetaResult {
   adSetId?: string;
   adIds?: string[];
   pageId?: string;
+  leadFormId?: string;
   portfolioUsed?: number;
   error?: string;
 }
@@ -265,7 +266,7 @@ export default function JobPage() {
                       className="text-xs bg-blue-600 text-white px-3 py-1 rounded-full hover:bg-blue-700">
                       Abrir no Ads Manager →
                     </a>
-                    <span className="text-green-600 text-xs">{job.meta_result.adIds?.length ?? 0} ads criados</span>
+                    <span className="text-green-600 text-xs">{job.meta_result.adIds?.length ?? 0} ads · {job.meta_result.leadFormId ? '1 formulário criado' : 'sem formulário'}</span>
                   </div>
                 )}
               </div>

@@ -23,7 +23,6 @@ async function metaPost(path, token, body) {
   return res.json();
 }
 
-// Try each portfolio token until one works for this ad account
 async function resolveToken(adAccountId) {
   for (const token of PORTFOLIO_TOKENS) {
     const res = await metaGet(`act_${adAccountId}?fields=id,name`, token);
@@ -32,7 +31,6 @@ async function resolveToken(adAccountId) {
   throw new Error(`No portfolio token has access to ad account ${adAccountId}`);
 }
 
-// Get the first page associated with this ad account's business
 async function getPageId(adAccountId, token) {
   try {
     const account = await metaGet(`act_${adAccountId}?fields=business`, token);
@@ -45,17 +43,51 @@ async function getPageId(adAccountId, token) {
   }
 }
 
-// Upload image to Meta via URL (returns hash)
 async function uploadImageUrl(adAccountId, token, imageUrl, filename) {
   const data = await metaPost(`act_${adAccountId}/adimages`, token, {
     url: imageUrl,
     filename: filename,
   });
   if (data.error) throw new Error(`Image upload failed: ${JSON.stringify(data.error)}`);
-  // Response: { images: { [filename]: { hash, url, ... } } }
   const images = data.images || {};
   const key = Object.keys(images)[0];
   return images[key]?.hash ?? null;
+}
+
+// Creates the Meta Instant Lead Form using the AI-generated copy
+async function createLeadForm(pageId, token, copy, property, destinationUrl) {
+  const formTitle = copy?.form_title || `${property.typology} em ${property.location}`;
+  const formDesc = copy?.form_description || '';
+  // Parse bullets: each non-empty line is one bullet
+  const bullets = formDesc.split('\n').map(l => l.trim()).filter(Boolean);
+
+  const data = await metaPost(`${pageId}/leadgen_forms`, token, {
+    name: `Formulário - ${property.typology} ${property.location} - Fluxe ${new Date().toISOString().slice(0, 10)}`,
+    questions: [
+      { type: 'FULL_NAME' },
+      { type: 'EMAIL' },
+      { type: 'PHONE' },
+    ],
+    context_card: {
+      style: 'LIST_STYLE',
+      title: formTitle,
+      content: bullets.length > 0 ? bullets : [formTitle],
+      button_text: 'Continuar',
+    },
+    privacy_policy: {
+      url: 'https://fluxe.pt/privacidade',
+      link_caption: 'Política de Privacidade',
+    },
+    thank_you_page: {
+      title: 'Obrigado pelo teu interesse!',
+      body: 'Entraremos em contacto brevemente para agendar a tua visita.',
+      website_url: destinationUrl || 'https://fluxe.pt',
+    },
+    locale: 'pt_PT',
+    block_display_for_non_targeted_viewer: false,
+  });
+  if (data.error) throw new Error(`Lead form creation failed: ${JSON.stringify(data.error)}`);
+  return data.id;
 }
 
 async function createCampaign(adAccountId, token, property) {
@@ -70,38 +102,41 @@ async function createCampaign(adAccountId, token, property) {
   return data.id;
 }
 
-async function createAdSet(adAccountId, token, campaignId, pageId, destinationUrl) {
+async function createAdSet(adAccountId, token, campaignId, pageId) {
   const data = await metaPost(`act_${adAccountId}/adsets`, token, {
     name: 'Ad Set - Fluxe',
     campaign_id: campaignId,
     status: 'PAUSED',
-    // HOUSING category requires no age/gender restrictions
     targeting: {
       geo_locations: { countries: ['PT'] },
+      publisher_platforms: ['facebook', 'instagram'],
+      facebook_positions: ['feed', 'reels'],
+      instagram_positions: ['stream', 'story', 'reels'],
     },
     optimization_goal: 'LEAD_GENERATION',
     billing_event: 'IMPRESSIONS',
     daily_budget: 500, // €5 placeholder — user adjusts before publishing
     bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+    destination_type: 'ON_AD', // Lead Gen Form destination
     ...(pageId ? { promoted_object: { page_id: pageId } } : {}),
-    ...(destinationUrl ? { destination_type: 'WEBSITE' } : {}),
   });
   if (data.error) throw new Error(`Ad set creation failed: ${JSON.stringify(data.error)}`);
   return data.id;
 }
 
-async function createAdCreative(adAccountId, token, pageId, imageHash, copyBody, copyTitle, destinationUrl) {
-  const linkUrl = destinationUrl || 'https://fluxe.pt';
+async function createAdCreative(adAccountId, token, pageId, imageHash, copyBody, copyTitle, leadFormId) {
   const data = await metaPost(`act_${adAccountId}/adcreatives`, token, {
     name: `Creative - ${copyTitle || 'Fluxe Ad'}`,
     object_story_spec: {
       page_id: pageId,
       link_data: {
         image_hash: imageHash,
-        link: linkUrl,
         message: copyBody,
         name: copyTitle || '',
-        call_to_action: { type: 'LEARN_MORE', value: { link: linkUrl } },
+        call_to_action: {
+          type: 'SIGN_UP',
+          value: leadFormId ? { lead_gen_form_id: leadFormId } : {},
+        },
       },
     },
   });
@@ -122,7 +157,7 @@ async function createAd(adAccountId, token, adSetId, creativeId, name) {
 
 /**
  * Creates the full campaign structure in Meta Ads Manager (all PAUSED).
- * Returns { campaignId, adSetId, adIds, pageId, portfolioUsed }
+ * Returns { campaignId, adSetId, adIds, pageId, leadFormId, portfolioUsed }
  */
 async function createMetaCampaign({ adAccountId, property, copy, squareImageUrls, destinationUrl }) {
   if (!adAccountId) throw new Error('adAccountId is required');
@@ -136,12 +171,19 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImageUrls
   );
 
   const campaignId = await createCampaign(adAccountId, token, property);
-  const adSetId = await createAdSet(adAccountId, token, campaignId, pageId, destinationUrl);
+  const adSetId = await createAdSet(adAccountId, token, campaignId, pageId);
 
   const adIds = [];
+  let leadFormId = null;
 
   if (pageId) {
-    // Create one creative + ad per image (up to 5)
+    // Create one Lead Gen Form shared across all 5 ads
+    try {
+      leadFormId = await createLeadForm(pageId, token, copy, property, destinationUrl);
+    } catch (err) {
+      console.error('Lead form creation failed (continuing without form):', err.message);
+    }
+
     const titles = copy?.titles ?? [];
     for (let i = 0; i < imageHashes.length; i++) {
       const hash = imageHashes[i];
@@ -150,7 +192,7 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImageUrls
         const title = titles[i] || titles[0] || `${property.typology} ${property.location}`;
         const creativeId = await createAdCreative(
           adAccountId, token, pageId, hash,
-          copy?.body || '', title, destinationUrl
+          copy?.body || '', title, leadFormId
         );
         const adId = await createAd(adAccountId, token, adSetId, creativeId, `Ad ${i + 1} - ${title}`);
         adIds.push(adId);
@@ -165,6 +207,7 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImageUrls
     adSetId,
     adIds,
     pageId,
+    leadFormId,
     portfolioUsed: PORTFOLIO_TOKENS.indexOf(token) + 1,
   };
 }
