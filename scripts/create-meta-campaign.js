@@ -23,6 +23,17 @@ async function metaPost(path, token, body) {
   return res.json();
 }
 
+// Some Meta endpoints require form-encoded (not JSON)
+async function metaPostForm(path, token, params) {
+  const body = new URLSearchParams({ ...params, access_token: token });
+  const res = await fetch(`${BASE}/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+  return res.json();
+}
+
 async function resolveToken(adAccountId) {
   for (const token of PORTFOLIO_TOKENS) {
     const res = await metaGet(`act_${adAccountId}?fields=id,name`, token);
@@ -141,8 +152,12 @@ async function createCampaign(adAccountId, token, property) {
 
 // Ad set — no budget (CBO), city radius targeting, FB+IG placements
 async function acceptLeadGenToS(pageId, token) {
-  const data = await metaPost(`leadgen_tos`, token, { page_id: pageId });
-  return !data.error;
+  // Try form-encoded (Meta's preferred format for this endpoint)
+  const data = await metaPostForm(`leadgen_tos`, token, { page_id: pageId });
+  if (!data.error) return true;
+  // Fallback: JSON
+  const data2 = await metaPost(`leadgen_tos`, token, { page_id: pageId });
+  return !data2.error;
 }
 
 async function createAdSet(adAccountId, token, campaignId, pageId, cityKey) {
@@ -239,7 +254,7 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImagePath
       if (accepted) {
         adSetId = await createAdSet(adAccountId, token, campaignId, pageId, cityKey);
       } else {
-        throw new Error(`A página Facebook (${pid}) precisa de aceitar os Termos para Lead Ads. Abre este link e aceita (1 vez): https://www.facebook.com/ads/leadgen/tos?page_id=${pid}`);
+        throw new Error(`Lead Ads ToS não aceite para a página ${pid}. Aceita aqui: https://www.facebook.com/ads/leadgen/tos?page_id=${pid} — Se já aceitaste, vai a Meta Business Manager → Definições → Integrações → Acesso a Leads e confirma o acesso.`);
       }
     } else {
       throw err;
