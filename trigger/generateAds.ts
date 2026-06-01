@@ -25,8 +25,9 @@ REGRAS ABSOLUTAS:
    - "da/das" → "na": "na Charneca da Caparica", "na Costa da Caparica", "na Cova da Piedade"
    - "do/dos" → "no": "no Pinhal do General", "no Restelo"
    - sem artigo → "em": "em Setúbal", "em Almada", "em Fernão Ferro"
-7. ZERO frases genéricas. Proibido: "espaço acolhedor", "zona em crescimento", "ideal para famílias", "ambiente familiar". Usa factos concretos do imóvel.
-8. Os bullets ✅ devem ter dados específicos: distâncias, nomes de lugares, características reais.
+7. ZERO frases genéricas. Proibido: "espaço acolhedor", "zona em crescimento", "ideal para famílias", "ambiente familiar", "excelente aproveitamento de espaço". Usa factos concretos.
+8. NUNCA inventes features que não estão nos dados fornecidos. Se o imóvel não tem piscina, não menciones piscina. Se não sabes se tem condomínio fechado, não digas que tem.
+9. Os bullets ✅ devem ter dados específicos: distâncias reais, nomes de lugares, características mencionadas nos dados.
 
 COPY BODY — formato exacto (meio texto, nem muito longo nem muito curto):
 🏠 [Tipo] [Tipologia] [prep+Localidade] — [Preço]

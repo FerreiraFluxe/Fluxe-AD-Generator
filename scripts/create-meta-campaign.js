@@ -35,12 +35,18 @@ async function getPageId(adAccountId, token) {
   try {
     const account = await metaGet(`act_${adAccountId}?fields=business`, token);
     const businessId = account.business?.id;
-    if (!businessId) return null;
-    const pages = await metaGet(`${businessId}/owned_pages?fields=id,name&limit=1`, token);
-    return pages.data?.[0]?.id ?? null;
-  } catch {
-    return null;
-  }
+    if (businessId) {
+      // Try owned_pages then client_pages
+      for (const edge of ['owned_pages', 'client_pages']) {
+        const res = await metaGet(`${businessId}/${edge}?fields=id,name&limit=1`, token);
+        if (res.data?.[0]?.id) return res.data[0].id;
+      }
+    }
+    // Fallback: pages accessible by this token
+    const me = await metaGet(`me/accounts?fields=id,name&limit=1`, token);
+    if (me.data?.[0]?.id) return me.data[0].id;
+  } catch {}
+  return null;
 }
 
 // Upload image to Meta as base64 bytes (avoids URL permission issues)
@@ -142,7 +148,7 @@ async function createAdSet(adAccountId, token, campaignId, pageId, cityKey) {
     optimization_goal: 'LEAD_GENERATION',
     billing_event: 'IMPRESSIONS',
     destination_type: 'ON_AD',
-    ...(pageId ? { promoted_object: { page_id: pageId } } : {}),
+    promoted_object: { page_id: pageId },
   });
   if (data.error) throw new Error(`Ad set creation failed: ${JSON.stringify(data.error)}`);
   return data.id;
@@ -192,6 +198,8 @@ async function createMetaCampaign({ adAccountId, property, copy, squareImagePath
     getPageId(adAccountId, token),
     findCityKey(property.location, token),
   ]);
+
+  if (!pageId) throw new Error(`Nenhuma página Facebook encontrada para a conta ${adAccountId}. Liga a página no Meta Business Manager.`);
 
   // Upload images as bytes — avoids token permission issues with URL fetching
   const imageHashes = await Promise.all(
