@@ -108,6 +108,7 @@ async function generateCopy(property: {
   bedrooms: string;
   bathrooms: string;
   features?: string;
+  description?: string;
 }): Promise<CopyBlock> {
   const groqKey = process.env.GROQ_API_KEY;
   if (!groqKey) throw new Error('GROQ_API_KEY não configurada');
@@ -352,6 +353,8 @@ export const generateAdsTask = task({
           area: data.area,
           bedrooms: data.bedrooms,
           bathrooms: data.bathrooms,
+          features: data.features,
+          description: data.description,
         });
       } catch (copyErr: any) {
         console.error('Copy generation failed (non-fatal):', copyErr.message);
